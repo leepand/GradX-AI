@@ -1,2 +1,4 @@
-# OptX-AI
-Our AI Personalization streams, a product of this collaboration, aims to transform gaming from a one-size-fits-all model to an experience tailored to individual players’ tastes. To achieve this, we created the OptX-AI system, a pioneering real-time recommender system.
+# GradX
+我们的AI个性化以RL为基础的，旨在将游戏从“一刀切”的模式转变为根据个别玩家喜好定制体验的模式。为了实现这一目标，我们创建了OptX-AI系统，这是一个开创性的实时推荐系统。
+
+
