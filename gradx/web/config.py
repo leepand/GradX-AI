@@ -1,4 +1,4 @@
-class Settings():
+class Settings:
     sparrow_key = ""
 
 

@@ -26,22 +26,22 @@ class DataInference:
         img_file = None
 
         def set_image_file(self, img_file):
-            st.session_state['img_file'] = img_file
+            st.session_state["img_file"] = img_file
 
         def get_image_file(self):
-            if 'img_file' not in st.session_state:
+            if "img_file" not in st.session_state:
                 return None
-            return st.session_state['img_file']
+            return st.session_state["img_file"]
 
         data_result = None
 
         def set_data_result(self, data_result):
-            st.session_state['data_result'] = data_result
+            st.session_state["data_result"] = data_result
 
         def get_data_result(self):
-            if 'data_result' not in st.session_state:
+            if "data_result" not in st.session_state:
                 return None
-            return st.session_state['data_result']
+            return st.session_state["data_result"]
 
     def view(self, model, ui_width, device_type, device_width):
         # st.title(model.pageTitle)
@@ -51,9 +51,12 @@ class DataInference:
             st.subheader(model.subheader_2)
 
             with st.form("upload-form", clear_on_submit=True):
-                uploaded_file = st.file_uploader(model.upload_button_text_desc, accept_multiple_files=False,
-                                                 type=['png', 'jpg', 'jpeg'],
-                                                 help=model.upload_help)
+                uploaded_file = st.file_uploader(
+                    model.upload_button_text_desc,
+                    accept_multiple_files=False,
+                    type=["png", "jpg", "jpeg"],
+                    help=model.upload_help,
+                )
                 submitted = st.form_submit_button(model.upload_button_text)
 
                 if submitted and uploaded_file is not None:
@@ -68,8 +71,9 @@ class DataInference:
             doc_height = doc_img.height
             doc_width = doc_img.width
 
-            canvas_width, number_of_columns = self.canvas_available_width(ui_width, doc_width, device_type,
-                                                                          device_width)
+            canvas_width, number_of_columns = self.canvas_available_width(
+                ui_width, doc_width, device_type, device_width
+            )
 
             if number_of_columns > 1:
                 col1, col2 = st.columns([number_of_columns, 10 - number_of_columns])
@@ -136,12 +140,9 @@ class DataInference:
                 "version": "v0.1",
                 "split": "train",
                 "image_id": 0,
-                "image_size": {
-                    "width": doc_width,
-                    "height": doc_height
-                }
+                "image_size": {"width": doc_width, "height": doc_height},
             },
-            "words": []
+            "words": [],
         }
 
         st_sparrow_labeling(
@@ -159,15 +160,17 @@ class DataInference:
             doc_height=doc_height,
             doc_width=doc_width,
             image_rescale=True,
-            key="doc_annotation" + model.get_image_file()
+            key="doc_annotation" + model.get_image_file(),
         )
 
     def render_results(self, model):
         with st.form(key="results_form"):
             button_placeholder = st.empty()
 
-            submit = button_placeholder.form_submit_button(model.extract_data, type="primary")
-            if 'inference_error' in st.session_state:
+            submit = button_placeholder.form_submit_button(
+                model.extract_data, type="primary"
+            )
+            if "inference_error" in st.session_state:
                 st.error(st.session_state.inference_error)
                 del st.session_state.inference_error
 
@@ -182,23 +185,25 @@ class DataInference:
                     sparrow_key = settings.sparrow_key
 
                     # Prepare the payload
-                    files = {
-                        'file': (file.name, file, 'image/jpeg')
-                    }
+                    files = {"file": (file.name, file, "image/jpeg")}
 
                     data = {
-                        'image_url': '',
-                        'model_in_use': model_in_use,
-                        'sparrow_key': sparrow_key
+                        "image_url": "",
+                        "model_in_use": model_in_use,
+                        "sparrow_key": sparrow_key,
                     }
 
                     with st.spinner("Extracting data from document..."):
-                        response = requests.post(api_url, data=data, files=files, timeout=180)
+                        response = requests.post(
+                            api_url, data=data, files=files, timeout=180
+                        )
                 if response.status_code != 200:
-                    print('Request failed with status code:', response.status_code)
-                    print('Response:', response.text)
+                    print("Request failed with status code:", response.status_code)
+                    print("Response:", response.text)
 
-                    st.session_state["inference_error"] = "Error extracting data from document"
+                    st.session_state[
+                        "inference_error"
+                    ] = "Error extracting data from document"
                     st.experimental_rerun()
 
                 model.set_data_result(response.text)

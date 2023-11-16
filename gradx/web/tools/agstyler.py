@@ -16,18 +16,18 @@ PINLEFT = {"pinned": "left"}
 
 
 def draw_grid(
-        df,
-        formatter: dict = None,
-        selection="multiple",
-        use_checkbox=False,
-        fit_columns=False,
-        pagination_size=0,
-        theme="streamlit",
-        wrap_text: bool = False,
-        auto_height: bool = False,
-        grid_options: dict = None,
-        key=None,
-        css: dict = None
+    df,
+    formatter: dict = None,
+    selection="multiple",
+    use_checkbox=False,
+    fit_columns=False,
+    pagination_size=0,
+    theme="streamlit",
+    wrap_text: bool = False,
+    auto_height: bool = False,
+    grid_options: dict = None,
+    key=None,
+    css: dict = None,
 ):
 
     gb = GridOptionsBuilder()
@@ -36,7 +36,7 @@ def draw_grid(
         groupable=False,
         editable=False,
         wrapText=wrap_text,
-        autoHeight=auto_height
+        autoHeight=auto_height,
     )
 
     if grid_options is not None:
@@ -48,7 +48,11 @@ def draw_grid(
     gb.configure_selection(selection_mode=selection, use_checkbox=use_checkbox)
 
     if pagination_size > 0:
-        gb.configure_pagination(enabled=True, paginationAutoPageSize=False, paginationPageSize=pagination_size)
+        gb.configure_pagination(
+            enabled=True,
+            paginationAutoPageSize=False,
+            paginationPageSize=pagination_size,
+        )
 
     return AgGrid(
         df,
@@ -59,7 +63,7 @@ def draw_grid(
         theme=theme,
         key=key,
         custom_css=css,
-        enable_enterprise_modules=False
+        enable_enterprise_modules=False,
     )
 
 

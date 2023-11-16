@@ -1,0 +1,14 @@
+{
+  "experiments": [
+    {
+      "id": 1,
+      "name": "dark_period_boost",
+      "description": "黑暗期助力"
+    },
+    {
+      "id": 2,
+      "name": "personalized_marketing_campaigns",
+      "description": "个性化C活动"
+    }
+  ]
+}
