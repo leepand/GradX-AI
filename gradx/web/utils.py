@@ -38,6 +38,15 @@ def get_yestoday_bj():
     return previous_date
 
 
+def get_lastn_date_bj(n):
+    current_date = get_bj_day()  # '2023-07-11'
+    date_format = "%Y-%m-%d"
+    current_datetime = datetime.strptime(current_date, date_format)
+    previous_datetime = current_datetime - timedelta(days=n)
+    previous_date = previous_datetime.strftime(date_format)
+    return previous_date
+
+
 def get_bj_day_time():
     utc_now = datetime.utcnow().replace(tzinfo=timezone.utc) - timedelta(hours=11)
     beijing_now = utc_now.astimezone(SHA_TZ)

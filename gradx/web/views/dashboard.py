@@ -13,6 +13,7 @@ from utils import get_bj_day_time, get_yestoday_bj
 from data import Database
 
 experiments_file = "docs/experiments.json"
+model_type_file = "docs/modeltypes.json"
 cache_store = hirlite.Rlite("db/cache.db", encoding="utf8")
 
 
@@ -30,8 +31,8 @@ class Dashboard:
 
         accuracyTitle = "Mean Accuracy"
 
-        titleModelEval = "## Evaluation Accuracy"
-        titleInferencePerformance = "## Inference Performance"
+        titleModelTypeAvgPays = "## Model Type Avg Pays"
+        titleModelTypePays = "## Model Type Pays"
         titleMidR = "## Mid R"
         titleBigR = "## Big R"
         titleSmallR = "## Small R"
@@ -42,36 +43,6 @@ class Dashboard:
 
     def view(self, model):
         # st.title(model.pageTitle)
-
-        api_url = "https://katanaml-org-sparrow-ml.hf.space/api-inference/v1/sparrow-ml/statistics"
-        json_data_inference = []
-        response = requests.get(api_url)
-        if response.status_code == 200:
-            json_data_inference = response.json()
-        else:
-            print(
-                f"Error: Unable to fetch data from the API (status code {response.status_code})"
-            )
-
-        api_url_t = "https://katanaml-org-sparrow-ml.hf.space/api-training/v1/sparrow-ml/statistics/training"
-        json_data_training = []
-        response_t = requests.get(api_url_t)
-        if response_t.status_code == 200:
-            json_data_training = response_t.json()
-        else:
-            print(
-                f"Error: Unable to fetch data from the API (status code {response_t.status_code})"
-            )
-
-        api_url_e = "https://katanaml-org-sparrow-ml.hf.space/api-training/v1/sparrow-ml/statistics/evaluate"
-        json_data_evaluate = []
-        response_e = requests.get(api_url_e)
-        if response_e.status_code == 200:
-            json_data_evaluate = response_e.json()
-        else:
-            print(
-                f"Error: Unable to fetch data from the API (status code {response_e.status_code})"
-            )
 
         with st.container():
             with open(experiments_file, "r") as f:
@@ -107,6 +78,7 @@ class Dashboard:
             db = Database(filter_big_user=filyer_pays)
             if process_data == "yes":
                 db.get_realdata_frombq()
+                db.get_model_type_frombq(ab_name_list=experiment_ids)
                 dt_now = get_bj_day_time()
                 cache_store.set("latest_time", dt_now)
                 cache_store.set("filter_pays", str(filyer_pays))
@@ -157,31 +129,8 @@ class Dashboard:
 
             with col4:
                 inference_time_avg = 0
-
-                # calculate inference time average
-                for i in range(0, len(json_data_inference)):
-                    inference_time_avg = inference_time_avg + json_data_inference[i][0]
-                inference_time_avg = round(
-                    inference_time_avg / len(json_data_inference), 2
-                )
-
                 delta_time = 0
-                if len(json_data_inference) > 3:
-                    avg_time_last = (
-                        json_data_inference[len(json_data_inference) - 1][0]
-                        + json_data_inference[len(json_data_inference) - 2][0]
-                        + json_data_inference[len(json_data_inference) - 3][0]
-                    ) / 3
-
-                    if avg_time_last > inference_time_avg:
-                        delta_time = round(
-                            100 - ((inference_time_avg * 100) / avg_time_last), 2
-                        )
-                    else:
-                        delta_time = (
-                            round(100 - ((avg_time_last * 100) / inference_time_avg), 2)
-                            * -1
-                        )
+                # calculate inference time average
 
                 st.metric(
                     label=model.inferenceTimeTitle,
@@ -191,40 +140,8 @@ class Dashboard:
                 )
 
             with col5:
-                models_unique = []
-                models_dict = {}
-                for i in range(0, len(json_data_evaluate)):
-                    if json_data_evaluate[i][3] not in models_unique:
-                        models_unique.append(json_data_evaluate[i][3])
-                        models_dict[json_data_evaluate[i][3]] = json_data_evaluate[i][
-                            1
-                        ]["mean_accuracy"]
-
-                avg_accuracy = 0
-                for key, value in models_dict.items():
-                    avg_accuracy = avg_accuracy + value
-                avg_accuracy = round(avg_accuracy / len(models_dict), 2)
-
-                if len(models_unique) > 3:
-                    # calculate average accuracy for last 3 values
-                    avg_accuracy_last = 0
-                    for i in range(1, 4):
-                        avg_accuracy_last = (
-                            avg_accuracy_last
-                            + models_dict[models_unique[len(models_unique) - i]]
-                        )
-                    avg_accuracy_last = round(avg_accuracy_last / 3, 2)
-                else:
-                    avg_accuracy_last = avg_accuracy
-
-                if avg_accuracy_last > avg_accuracy:
-                    delta_accuracy = round(
-                        100 - ((avg_accuracy * 100) / avg_accuracy_last), 2
-                    )
-                else:
-                    delta_accuracy = (
-                        round(100 - ((avg_accuracy_last * 100) / avg_accuracy), 2) * -1
-                    )
+                avg_accuracy = 0.98
+                delta_accuracy = 0
 
                 st.metric(
                     label=model.accuracyTitle,
@@ -239,44 +156,40 @@ class Dashboard:
             col1, col2 = st.columns(2)
 
             with col1:
-                st.write(model.titleInferencePerformance)
+                st.write(model.titleModelTypePays)
+                with open(model_type_file, "r") as f:
+                    modeltypes_json = json.load(f)
 
-                models_dict = {}
+                modeltypes = modeltypes_json["modeltypes"]
+                model_type_names = [
+                    model_type_json["description"]
+                    for model_type_json in modeltypes
+                    if model_type_json["name"] == ab_id_name
+                ]
+                model_type_list = []
+                for mt in model_type_names:
+                    try:
+                        mt_l = eval(mt)
+                    except:
+                        mt_l = []
+                    if isinstance(mt_l, list):
+                        model_type_list = mt_l
 
-                models = []
-                for i in range(0, len(json_data_inference)):
-                    models.append(json_data_inference[i][3])
+                df_avg_user_usd, df_usd = db.get_model_type_pays(
+                    ab_name=ab_id_name, model_type_list=model_type_list
+                )
 
-                models_unique = []
-                for item in models:
-                    if item not in models_unique:
-                        models_unique.append(item)
-
-                for i, key in enumerate(models_unique):
-                    models_dict[key] = []
-
-                for i in range(0, len(json_data_inference)):
-                    models_dict[json_data_inference[i][3]].append(
-                        round(json_data_inference[i][0])
-                    )
-
-                data = pd.DataFrame(models_dict)
-                st.line_chart(data)
+                df_usd.dropna(inplace=True)
+                # st.write(model_type_list)
+                # st.dataframe(df_usd)
+                df_transposed = df_usd.pivot(index="date", columns="tag", values="usd")
+                st.line_chart(df_transposed)
 
             with col2:
-                st.write(model.titleModelEval)
-
-                models_unique = []
-                models_dict = {}
-                for i in range(0, len(json_data_evaluate)):
-                    if json_data_evaluate[i][3] not in models_unique:
-                        models_unique.append(json_data_evaluate[i][3])
-                        models_dict[json_data_evaluate[i][3]] = json_data_evaluate[i][
-                            1
-                        ]["accuracies"]
-
-                data = pd.DataFrame(models_dict)
-                st.line_chart(data)
+                st.write(model.titleModelTypeAvgPays)
+                df_avg_user_usd.dropna(inplace=True)
+                df_transposeg_avt = df_avg_user_usd.pivot(index="date", columns="tag", values="avg_user_usd")
+                st.line_chart(df_transposeg_avt)
 
         st.markdown("---")
 
@@ -286,7 +199,7 @@ class Dashboard:
             with col1:
                 with st.container():
                     st.write(model.titleBigR)
-                    df_bigR,df2 = db.classify_by_paytype(["big_R"], ab_name=ab_id_name)
+                    df_bigR, df2 = db.classify_by_paytype(["big_R"], ab_name=ab_id_name)
                     df_list = df_bigR.to_dict(orient="records")  # ["pays"]
                     alternatives_list = []
                     values_list = []
@@ -317,7 +230,7 @@ class Dashboard:
                 with st.container():
                     st.write(model.titleMidR)
 
-                    df_midR,df2 = db.classify_by_paytype(["mid_R"], ab_name=ab_id_name)
+                    df_midR, df2 = db.classify_by_paytype(["mid_R"], ab_name=ab_id_name)
                     df_list = df_midR.to_dict(orient="records")  # ["pays"]
                     alternatives_list = []
                     values_list = []
@@ -348,7 +261,9 @@ class Dashboard:
                 with st.container():
                     st.write(model.titleSmallR)
 
-                    df_smallR,df2 = db.classify_by_paytype(["small_R"], ab_name=ab_id_name)
+                    df_smallR, df2 = db.classify_by_paytype(
+                        ["small_R"], ab_name=ab_id_name
+                    )
                     df_list = df_smallR.to_dict(orient="records")  # ["pays"]
                     alternatives_list = []
                     values_list = []
@@ -381,7 +296,7 @@ class Dashboard:
         with st.container():
             st.write(model.titleAllPlayers)
 
-            df_allR,df2 = db.classify_by_paytype([], ab_name=ab_id_name)
+            df_allR, df2 = db.classify_by_paytype([], ab_name=ab_id_name)
             df_list = df2.to_dict(orient="records")  # ["pays"]
             alternatives_list = []
             values_list = []

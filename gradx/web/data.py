@@ -1,6 +1,6 @@
 import duckdb
 from google.cloud import bigquery
-from utils import get_bj_day, get_yestoday_bj
+from utils import get_bj_day, get_yestoday_bj, get_lastn_date_bj
 
 
 def get_conn(db=":memory:", is_shared=False):
@@ -45,13 +45,36 @@ class Database:
         for row in df_filters.itertuples():
             uid_list.append(str(row.uid))
         return uid_list
-    def get_model_type_frombq(self):
-        query_str=f"""
+
+    def get_model_type_frombq(
+        self, ab_name_list=[], model_type_list=[], ab_date=None, pay_date=None
+    ):
+        if len(model_type_list) > 2:
+            filter_opts_modeltype = (
+                f"jsonPayload.exposure_details IN {tuple(model_type_list)}"
+            )
+        elif len(model_type_list) == 1:
+            filter_opts_modeltype = (
+                f"jsonPayload.exposure_details in ({model_type_list[0]})"
+            )
+        else:
+            filter_opts_modeltype = "1=1"
+
+        if len(ab_name_list) > 2:
+            filter_opts_ab = f"jsonPayload.ab_id IN {tuple(ab_name_list)}"
+        elif len(model_type_list) == 1:
+            filter_opts_ab = f"jsonPayload.ab_id in ({ab_name_list[0]})"
+        else:
+            filter_opts_ab = "1=1"
+
+        ab_date = get_yestoday_bj()
+        pay_date = get_lastn_date_bj(7)
+        query_str = f"""
             WITH
                 #####
                 churn_tag AS (
                 SELECT
-                    DISTINCT CAST(uid AS String) AS uid,
+                    DISTINCT ab_id, CAST(uid AS String) AS uid,
                     exposure_details,
                     alternatives,
                     CONCAT(alternatives, " - ", exposure_details) AS tag
@@ -61,8 +84,9 @@ class Database:
                     FROM
                     `seateam.fact.sys_churn_pay_result`
                     WHERE
-                    timestamp>=TIMESTAMP("2023-11-07 20:00:00", "+08" )
-                    AND jsonPayload.ab_id = "online_recom_payitems"
+                    timestamp>=TIMESTAMP("{ab_date} 20:00:00", "+08" )
+                    AND {filter_opts_ab}
+                    AND {filter_opts_modeltype}
                     AND jsonPayload.log_type = 4)),
                 ####
                 pay AS (
@@ -72,9 +96,10 @@ class Database:
                 FROM
                     `seateam.fact.purchase`
                 WHERE
-                    timestamp>=TIMESTAMP("2023-11-01 11:00:00", "+08" )
+                    timestamp>=TIMESTAMP("{pay_date} 11:00:00", "+08" )
                     AND (NOT IFNULL(jsonpayload.is_sandbox, 0) = 1))
                 SELECT
+                ab_id,
                 date,
                 tag,
                 COUNT(*) AS cnt,
@@ -89,11 +114,53 @@ class Database:
                 (uid)
                 GROUP BY
                 1,
-                2
+                2,
+                3
                 ORDER BY
                 1,
-                2
+                2,
+                3
             """
+        results = self.bqclient.query(query_str)
+        df_query = results.to_dataframe()
+        self.conn.execute("""DROP TABLE IF EXISTS ab_modeltype_pays; """)
+        self.conn.execute("create table ab_modeltype_pays as select * from df_query")
+        return df_query
+
+    def get_model_type_pays(self, ab_name, model_type_list=[]):
+        alt_list = [
+            "control",
+            "control1",
+            "control2",
+            "control3",
+            "test",
+            "test1",
+            "test2",
+        ]
+        filter_alt_list = []
+        if len(model_type_list) > 0:
+            for modeltype in model_type_list:
+                for alt in alt_list:
+                    filter_alt_list.append(f"""{alt} - {modeltype}""")
+
+            filters = f"tag in {tuple(filter_alt_list)}"
+        else:
+            filters = "1=1"
+
+        df_avg_user_usd = self.conn.execute(
+            f"""select date,tag,avg_user_usd 
+                    from ab_modeltype_pays
+                    where ab_id='{ab_name}'
+                    and {filters}
+            """
+        ).df()
+        df_usd = self.conn.execute(
+            f"""select date,tag,usd 
+                        from ab_modeltype_pays
+                        where ab_id='{ab_name}'
+                        and {filters} """
+        ).df()
+        return df_avg_user_usd, df_usd
 
     def get_realdata_frombq(self, stat_date=None):
         if stat_date is None:
@@ -178,7 +245,6 @@ class Database:
     def get_allpays(self, ab_name):
         yestoday = get_yestoday_bj()
         today = get_bj_day()
-
         query = f"""
             SELECT SUM(sum_pays) AS all_pays, date
             FROM ab_pays
@@ -223,9 +289,9 @@ class Database:
         return model_val, control_val
 
     def classify_by_paytype(self, pay_type_list, ab_name):
-        if len(pay_type_list)==0:
+        if len(pay_type_list) == 0:
             opts = "1=1"
-        elif len(pay_type_list) ==1:
+        elif len(pay_type_list) == 1:
             opts = f"Pay_type = '{pay_type_list[0]}'"
         else:
             opts = f"Pay_type in {tuple(pay_type_list)}"
@@ -287,4 +353,4 @@ class Database:
                 a.alternatives=b.alternatives
             """
         ).df()
-        return df,df2
+        return df, df2
