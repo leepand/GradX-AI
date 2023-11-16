@@ -9,7 +9,7 @@ from datetime import datetime
 import hirlite
 
 
-from utils import get_bj_day_time, get_yestoday_bj
+from utils import get_bj_day_time, get_yestoday_bj, get_bj_day, safe_div
 from data import Database
 
 experiments_file = "docs/experiments.json"
@@ -23,13 +23,13 @@ class Dashboard:
 
         paysTitle = "今日/昨日总付费 $"
 
-        inferenceTimeTitle = "Inference Time"
+        inferenceTimeTitle = "data update cnt(all)"
 
         altPaysTitle = "model/control总付费 $"
 
         dailyInferenceTitle = "model/control Lift ＄"
 
-        accuracyTitle = "Mean Accuracy"
+        accuracyTitle = "query cnt(all)"
 
         titleModelTypeAvgPays = "## Model Type Avg Pays"
         titleModelTypePays = "## Model Type Pays"
@@ -74,6 +74,16 @@ class Dashboard:
                 "Display by experiment",
                 experiment_ids,
             )
+            ## 数据更新次数
+            ## 查询次数
+            today = get_bj_day()
+            yestoday = get_yestoday_bj()
+            data_update_key = f"data_update:{today}"
+            data_update_all_key = f"data_update:all"
+            data_query_key = f"query:{today}:{ab_id_name}"
+            data_query_all_key = f"query:all:{ab_id_name}"
+            cache_store.incr(data_query_key)
+            cache_store.incr(data_query_all_key)
             filyer_pays = st.sidebar.slider("Filter user pays", 0, 20000, 0)
             db = Database(filter_big_user=filyer_pays)
             if process_data == "yes":
@@ -82,6 +92,8 @@ class Dashboard:
                 dt_now = get_bj_day_time()
                 cache_store.set("latest_time", dt_now)
                 cache_store.set("filter_pays", str(filyer_pays))
+                cache_store.incr(data_update_key)
+                cache_store.incr(data_update_all_key)
 
             today_all_pays, yes_today_all_pays = db.get_allpays(ab_id_name)
             _filter_pays = cache_store.get("filter_pays")
@@ -128,25 +140,75 @@ class Dashboard:
                 )
 
             with col4:
-                inference_time_avg = 0
                 delta_time = 0
+                data_update_yestoday_cnt = 0
+                all_data_update_cnt = 0
                 # calculate inference time average
+                all_data_update_cnt = cache_store.get(data_update_all_key)
+                data_update_yestoday_key = f"data_update:{yestoday}"
+                data_update_yestoday_cnt = cache_store.get(data_update_yestoday_key)
+                if data_update_yestoday_cnt is None:
+                    data_update_yestoday_cnt = 0
+                data_update_today_cnt = cache_store.get(data_update_key)
+                delta_time = safe_div(data_update_today_cnt, data_update_yestoday_cnt)
+                if int(all_data_update_cnt) > 1000:
+                    all_data_update_cnt = int(all_data_update_cnt)
+                    updata_all = f"{round(all_data_update_cnt/1000,2)}K"
+                else:
+                    updata_all = str(all_data_update_cnt)
 
+                if int(data_update_today_cnt) > 1000:
+                    data_update_today_cnt = int(data_update_today_cnt)
+                    data_update_today_cnt = f"{round(data_update_today_cnt/1000,1)}K"
+                if int(data_update_yestoday_cnt) > 1000:
+                    data_update_yestoday_cnt = int(data_update_yestoday_cnt)
+                    data_update_yestoday_cnt = (
+                        f"{round(data_update_yestoday_cnt/1000,1)}K"
+                    )
                 st.metric(
                     label=model.inferenceTimeTitle,
-                    value=str(inference_time_avg) + " s",
-                    delta=str(delta_time) + "%",
+                    value=updata_all,
+                    delta=str(delta_time)
+                    + "%"
+                    + f"({data_update_today_cnt}/{data_update_yestoday_cnt})",
                     delta_color="inverse",
                 )
 
             with col5:
                 avg_accuracy = 0.98
                 delta_accuracy = 0
+                data_query_yestoday_cnt = 0
+
+                all_query_cnt = cache_store.get(data_query_all_key)
+                data_query_yestoday_key = f"query:{yestoday}:{ab_id_name}"
+                data_query_yestoday_cnt = cache_store.get(data_query_yestoday_key)
+                if data_query_yestoday_cnt is None:
+                    data_query_yestoday_cnt = 0
+
+                data_query_today_cnt = cache_store.get(data_query_key)
+                delta_accuracy = safe_div(data_query_today_cnt, data_query_yestoday_cnt)
+
+                if int(all_query_cnt) > 1000:
+                    all_query_cnt = int(all_query_cnt)
+                    query_all = f"{round(all_query_cnt/1000,2)}K"
+                else:
+                    query_all = str(all_query_cnt)
+
+                if int(data_query_today_cnt) > 1000:
+                    data_query_today_cnt = int(data_query_today_cnt)
+                    data_query_today_cnt = f"{round(data_query_today_cnt/1000,1)}K"
+                if int(data_query_yestoday_cnt) > 1000:
+                    data_query_yestoday_cnt = int(data_query_yestoday_cnt)
+                    data_query_yestoday_cnt = (
+                        f"{round(data_query_yestoday_cnt/1000,1)}K"
+                    )
 
                 st.metric(
                     label=model.accuracyTitle,
-                    value=avg_accuracy,
-                    delta=str(delta_accuracy) + "%",
+                    value=query_all,
+                    delta=str(delta_accuracy)
+                    + "%"
+                    + f"({data_query_today_cnt}/{data_query_yestoday_cnt})",
                     delta_color="inverse",
                 )
 
@@ -188,7 +250,9 @@ class Dashboard:
             with col2:
                 st.write(model.titleModelTypeAvgPays)
                 df_avg_user_usd.dropna(inplace=True)
-                df_transposeg_avt = df_avg_user_usd.pivot(index="date", columns="tag", values="avg_user_usd")
+                df_transposeg_avt = df_avg_user_usd.pivot(
+                    index="date", columns="tag", values="avg_user_usd"
+                )
                 st.line_chart(df_transposeg_avt)
 
         st.markdown("---")

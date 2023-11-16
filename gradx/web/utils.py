@@ -53,3 +53,11 @@ def get_bj_day_time():
     _bj = beijing_now.strftime("%Y-%m-%d %H:%M:%S")  # 结果显示：'2017-10-07'
 
     return _bj
+
+
+def safe_div(a, b):
+    """Returns a if b is nil, else divides a by b.
+    When scaling, sometimes a denominator might be nil. For instance, during standard scaling
+    the denominator can be nil if a feature has no variance.
+    """
+    return a / b if b else 0.0
