@@ -7,12 +7,90 @@ from streamlit_sparrow_labeling import st_sparrow_labeling
 import requests
 from config import settings
 import json
+from streamlit_extras.colored_header import colored_header
+from streamlit_ace import st_ace, THEMES
+from client import HTTPClient, method_form, call_method, ExecutionError
+import pickle
+import hirlite
+
+model_file = "docs/models.json"
+cache_store = hirlite.Rlite("db/cache.db", encoding="utf8")
+
+
+THEMES = [
+    "ambiance",
+    "chaos",
+    "chrome",
+    "clouds",
+    "clouds_midnight",
+    "cobalt",
+    "crimson_editor",
+    "dawn",
+    "dracula",
+    "dreamweaver",
+    "eclipse",
+    "github",
+    "gob",
+    "gruvbox",
+    "idle_fingers",
+    "iplastic",
+    "katzenmilch",
+    "kr_theme",
+    "kuroir",
+    "merbivore",
+    "merbivore_soft",
+    "mono_industrial",
+    "monokai",
+    "nord_dark",
+    "pastel_on_dark",
+    "solarized_dark",
+    "solarized_light",
+    "sqlserver",
+    "terminal",
+    "textmate",
+    "tomorrow",
+    "tomorrow_night",
+    "tomorrow_night_blue",
+    "tomorrow_night_bright",
+    "tomorrow_night_eighties",
+    "twilight",
+    "vibrant_ink",
+    "xcode",
+]
+
+
+# @st.cache_resource
+def get_client(server_host="1.31.24.138", server_port=5001):
+    return HTTPClient(host=server_host, port=int(server_port))
+
+
+def save_json_to_file(json_string, file_path):
+    with open(file_path, "w") as file:
+        # json_string1=json_dumps_data(json_string)
+        file.write(json_string)
+
+
+def load_json_from_file(file_path):
+    with open(file_path, "r", encoding="utf-8-sig", errors="ignore") as file:
+        json_data = json.load(file, strict=False)
+        return json_data
+
+
+def json_dumps_data(data):
+    _data = json.dumps(
+        data,
+        separators=(",", ":"),
+    )
+    return _data
+
+
+PIXELS_PER_LINE = 27
+INDENT = 8
 
 
 class DataInference:
     class Model:
         # pageTitle = "Data Inference"
-        subheader_2 = "Upload"
         initial_msg = "Please upload a file for inference"
 
         upload_help = "Upload a file to extract data from it"
@@ -24,6 +102,7 @@ class DataInference:
         model_in_use = "donut"
 
         img_file = None
+        models_file = "docs/models.json"
 
         def set_image_file(self, img_file):
             st.session_state["img_file"] = img_file
@@ -43,125 +122,226 @@ class DataInference:
                 return None
             return st.session_state["data_result"]
 
-    def view(self, model, ui_width, device_type, device_width):
+    def view(self, model):
         # st.title(model.pageTitle)
+        with open(model_file, "r") as f:
+            models_json = json.load(f)
+        models = models_json["models"]
+        model_name_list = []
+        if len(models) < 1:
+            st.error("Please setup first at setup page!")
 
+        model_info = {}
+        for _model in models:
+            model_name = _model["name"]
+            if model_name in model_info:
+                model_info[model_name].append(_model)
+            else:
+                model_info[model_name] = [_model]
+        model_name_list = list(model_info.keys())
         with st.sidebar:
             st.markdown("---")
-            st.subheader(model.subheader_2)
+            st.sidebar.header("Model Inference `v.1.0`")
 
-            with st.form("upload-form", clear_on_submit=True):
-                uploaded_file = st.file_uploader(
-                    model.upload_button_text_desc,
-                    accept_multiple_files=False,
-                    type=["png", "jpg", "jpeg"],
-                    help=model.upload_help,
-                )
-                submitted = st.form_submit_button(model.upload_button_text)
-
-                if submitted and uploaded_file is not None:
-                    ret = self.upload_file(uploaded_file)
-
-                    if ret is not False:
-                        model.set_image_file(ret)
-                        model.set_data_result(None)
-
-        if model.get_image_file() is not None:
-            doc_img = Image.open(model.get_image_file())
-            doc_height = doc_img.height
-            doc_width = doc_img.width
-
-            canvas_width, number_of_columns = self.canvas_available_width(
-                ui_width, doc_width, device_type, device_width
-            )
-
-            if number_of_columns > 1:
-                col1, col2 = st.columns([number_of_columns, 10 - number_of_columns])
-                with col1:
-                    self.render_doc(model, doc_img, canvas_width, doc_height, doc_width)
-                with col2:
-                    self.render_results(model)
+            st.sidebar.subheader("Model Env")
+            model_env = st.sidebar.selectbox("Display by env", ("Dev", "Prod"))
+            st.sidebar.subheader("Model Name")
+            if len(model_name_list) > 0:
+                model_name = st.sidebar.selectbox("Models", model_name_list)
             else:
-                self.render_doc(model, doc_img, canvas_width, doc_height, doc_width)
-                self.render_results(model)
-        else:
-            st.title(model.initial_msg)
+                model_name = st.sidebar.selectbox("Models", ("no model"))
+            st.sidebar.subheader("Model Server")
+            model_server = st.sidebar.selectbox(
+                "Servers", ("recomserver", "rewardserver")
+            )
+        model_base_info = model_info[model_name]
+        for index, x_i in enumerate(model_base_info):
+            if x_i["env"].lower() == model_env.lower():
+                model_setup_info = x_i
+                break
+        # st.write(model_setup_info)
+        try:
+            server_name = model_setup_info[model_server]
+            dataform_server = str(server_name).strip("'<>() ").replace("'", '"')
+            ports = json.loads(dataform_server)["ports"]
+        except:
+            ports = model_setup_info[model_server]["ports"]
+        client = get_client(server_port=ports[0])
+        methods = ["predict"]
+        # tabs = st.tabs(methods)
 
-    def upload_file(self, uploaded_file):
-        timestamp = str(time.time())
-        timestamp = timestamp.replace(".", "")
+        tabs = ["predict"]
+        for method_name, tab in zip(methods, tabs):
+            with st.container():
+                # with tab:
+                # tab.header(method_name)
+                # st.header(method_name)
+                _, colT21 = st.columns([3, 7])
+                with colT21:
+                    st.title("Model Inference")
+                method = call_method(client=client, method_name="predict")
 
-        file_name, file_extension = os.path.splitext(uploaded_file.name)
-        uploaded_file.name = file_name + "_" + timestamp + file_extension
+                colored_header(
+                    label="Model Input",
+                    description="Use this app to reformat and edit json files",
+                    color_name="violet-70",
+                )
+                input_data_template = {
+                    "uid": 1,
+                    "request_id": 2.0,
+                    "feature1": "abc",
+                    "feature2": {"a": 3},
+                    "feature3": [4, 5.0, "def"],
+                }
 
-        if os.path.exists(os.path.join("docs/inference/", uploaded_file.name)):
-            st.write("File already exists")
-            return False
+                json_file = st.file_uploader(
+                    "Upload JSON Data",
+                    type=["json"],
+                )
 
-        if len(uploaded_file.name) > 500:
-            st.write("File name too long")
-            return False
+                col1, col2 = st.columns(2)
+                sep1 = col1.selectbox("Separators (1)", [",", ":", "="])
+                sep2 = col2.selectbox("Separators (2)", [":", ",", "="])
+                indents = col1.number_input("Indentation", min_value=1, value=4)
+                sort_keys = st.checkbox("Sort Keys", True)
+                theme_key = st.checkbox("Dark Theme", True)
+                if theme_key:
+                    theme_app = "solarized_dark"
+                else:
+                    theme_app = THEMES[3]
+                update_model_file = st.checkbox("Update data", False)
+                if json_file:
+                    # with open(json_file) as f:
+                    temp = json.load(json_file)
 
-        with open(os.path.join("docs/inference/", uploaded_file.name), "wb") as f:
-            f.write(uploaded_file.getbuffer())
+                    formatted = json.dumps(
+                        temp,
+                        indent=indents,
+                        sort_keys=sort_keys,
+                        separators=(f"{sep1}", f"{sep2}"),
+                    )
 
-        st.success("File uploaded successfully")
+                    content = st_ace(
+                        value=formatted,
+                        language="markdown",
+                        # theme="solarized_dark",
+                        theme=THEMES[3],
+                        keybinding="vscode",
+                        min_lines=20,
+                        max_lines=None,
+                        font_size=14,
+                        tab_size=4,
+                        wrap=False,
+                        show_gutter=True,
+                        show_print_margin=False,
+                        readonly=False,
+                        annotations=None,
+                    )
 
-        return os.path.join("docs/inference/", uploaded_file.name)
+                    st.download_button(
+                        label="Download formatted JSON",
+                        data=content,
+                        file_name=f"{model_name}_{model_server}.json",
+                        mime="json",
+                    )
+                    data = content
+                else:
+                    # st.warning("Upload a .json to get started")
+                    # data = st.text_area("data", value=input_data_template)
+                    # with open(json_file) as f:
+                    data_key = f"data_{model_server}"
+                    data_template = model_setup_info.get(data_key)
+                    data_key_cache = f"{model_name}:{model_server}:{model_env}"
+                    data_example = cache_store.get(data_key_cache)
+                    if data_template is None:
+                        if data_example is None:
+                            temp = input_data_template  # json.load(json_file)
+                        else:
+                            temp = pickle.loads(data_example)
+                    else:
+                        try:
+                            temp = json.loads(data_template)  # [model_server]
+                        except:
+                            if data_example is None:
+                                temp = input_data_template
+                            else:
+                                temp = pickle.loads(data_example)
+                    if isinstance(temp,dict):
+                        formatted = json.dumps(
+                        temp,
+                        indent=indents,
+                        sort_keys=sort_keys,
+                        separators=(f"{sep1}", f"{sep2}"),
+                    )
+                    else:
+                        formatted = temp
 
-    def canvas_available_width(self, ui_width, doc_width, device_type, device_width):
-        doc_width_pct = (doc_width * 100) / ui_width
-        if doc_width_pct < 45:
-            canvas_width_pct = 37
-        elif doc_width_pct < 55:
-            canvas_width_pct = 49
-        else:
-            canvas_width_pct = 60
+                    content = st_ace(
+                        value=formatted,
+                        language="markdown",
+                        # theme="solarized_dark",
+                        theme=theme_app,
+                        keybinding="vscode",
+                        min_lines=20,
+                        max_lines=None,
+                        font_size=14,
+                        tab_size=4,
+                        wrap=False,
+                        show_gutter=True,
+                        show_print_margin=False,
+                        readonly=False,
+                        annotations=None,
+                    )
+                    st.download_button(
+                        label="Download formatted JSON",
+                        data=content,
+                        file_name=f"{model_name}_{model_server}.json",
+                        mime="json",
+                    )
+                    data = content
 
-        if ui_width > 700 and canvas_width_pct == 37 and device_type == "desktop":
-            return math.floor(canvas_width_pct * ui_width / 100), 4
-        elif ui_width > 700 and canvas_width_pct == 49 and device_type == "desktop":
-            return math.floor(canvas_width_pct * ui_width / 100), 5
-        elif ui_width > 700 and canvas_width_pct == 60 and device_type == "desktop":
-            return math.floor(canvas_width_pct * ui_width / 100), 6
-        else:
-            if device_type == "desktop":
-                ui_width = device_width - math.floor((device_width * 22) / 100)
-            elif device_type == "mobile":
-                ui_width = device_width - math.floor((device_width * 13) / 100)
-            return ui_width, 1
+                with st.form(key=method_name):
+                    x = f"model service ports: {ports},server: {model_server}"
+                    st.write(x)
+                    submit_button = st.form_submit_button(label="Submit")
+                    if submit_button:
+                        st.write(data)
+                        if isinstance(data, dict):
+                            loaded_json = data
+                        else:
 
-    def render_doc(self, model, doc_img, canvas_width, doc_height, doc_width):
-        height = 1296
-        width = 864
+                            valid_json = data  # .replace("'", '"')
+                            dataform = str(valid_json).strip("'<>() ").replace("'", '"')
+                            try:
+                                loaded_json = json.loads(r"{}".format(valid_json))
+                            except:
+                                loaded_json = eval(valid_json)
+                                # loaded_json = json.loads(json.dumps(_dataform))
 
-        annotations_json = {
-            "meta": {
-                "version": "v0.1",
-                "split": "train",
-                "image_id": 0,
-                "image_size": {"width": doc_width, "height": doc_height},
-            },
-            "words": [],
-        }
+                        # st.json(data)
+                        arg_values = method(
+                            payload=loaded_json, name=f"predict/{model_server}"
+                        )
+                        st.markdown("---")
+                        with st.spinner("Processing..."):
+                            if update_model_file:
+                                data_key = f"{model_name}:{model_server}:{model_env}"
+                                cache_store.set(data_key, pickle.dumps(loaded_json))
+                            st.write("Response:")
+                            # st.json(arg_values)
+                            result = f"""
+                            ```python
+                            {arg_values}
+                            ```
+                            """
+                            result = json.dumps(
+                                arg_values,
+                                indent=indents,
+                                sort_keys=sort_keys,
+                                separators=(f"{sep1}", f"{sep2}"),
+                            )
 
-        st_sparrow_labeling(
-            fill_color="rgba(0, 151, 255, 0.3)",
-            stroke_width=2,
-            stroke_color="rgba(0, 50, 255, 0.7)",
-            background_image=doc_img,
-            initial_rects=annotations_json,
-            height=height,
-            width=width,
-            drawing_mode="transform",
-            display_toolbar=False,
-            update_streamlit=False,
-            canvas_width=canvas_width,
-            doc_height=doc_height,
-            doc_width=doc_width,
-            image_rescale=True,
-            key="doc_annotation" + model.get_image_file(),
-        )
+                            st.markdown("```json\n" + result + "\n```")
 
     def render_results(self, model):
         with st.form(key="results_form"):

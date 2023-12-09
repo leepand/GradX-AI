@@ -4,12 +4,12 @@ from tools.utilities import load_css
 import json
 
 from views.dashboard import Dashboard
-from views.data_annotation import DataAnnotation
+from views.model_monitor import ModelMonitor
 from views.model_training import ModelTraining
 from views.model_tuning import ModelTuning
 from views.data_inference import DataInference
 from views.setup import Setup
-from views.data_review import DataReview
+from views.feature_store import FeatureStore
 from views.about import About
 
 import streamlit_javascript as st_js
@@ -20,13 +20,13 @@ load_css()
 
 
 class Model:
-    menuTitle = "OptX-AI"
+    menuTitle = "GradX-AI"
     option1 = "Dashboard"
-    option2 = "Data Annotation"
+    option2 = "Model Monitor"
     option3 = "Model Training"
     option4 = "Model Tuning"
     option5 = "Inference"
-    option6 = "Data Review"
+    option6 = "Feature Store"
     option7 = "Setup"
     option8 = "About"
 
@@ -107,12 +107,7 @@ def view(model):
 
                 st.experimental_rerun()
         else:
-            DataAnnotation().view(
-                DataAnnotation.Model(),
-                st.session_state["ui_width"],
-                st.session_state["device_type"],
-                st.session_state["device_width"],
-            )
+            ModelMonitor().view(ModelMonitor.Model())
         logout_widget()
 
     if menuItem == model.option3:
@@ -150,12 +145,7 @@ def view(model):
 
                 st.experimental_rerun()
         else:
-            DataInference().view(
-                DataInference.Model(),
-                st.session_state["ui_width"],
-                st.session_state["device_type"],
-                st.session_state["device_width"],
-            )
+            DataInference().view(DataInference.Model())
 
         logout_widget()
 
@@ -186,12 +176,7 @@ def view(model):
 
                 st.experimental_rerun()
         else:
-            DataReview().view(
-                DataReview.Model(),
-                st.session_state["ui_width"],
-                st.session_state["device_type"],
-                st.session_state["device_width"],
-            )
+            FeatureStore().view(FeatureStore.Model())
 
         logout_widget()
 

@@ -2,7 +2,10 @@ from datetime import datetime
 from datetime import timezone
 from datetime import timedelta
 from hashlib import sha1
+import os
 
+import sqlite3
+import streamlit as st
 
 SHA_TZ = timezone(
     timedelta(hours=8),
@@ -12,6 +15,22 @@ SHA_TZ = timezone(
 
 def number_format(number):
     return "{:,}".format(number)
+
+
+def get_file_size(file_path):
+    # 获取文件大小（以字节为单位）
+    file_size = os.path.getsize(file_path)
+    print("文件大小（字节）:", file_size)
+
+    # 获取文件大小（以可读格式显示）
+    file_size_readable = os.path.getsize(file_path)
+    size_suffixes = ["B", "KB", "MB", "GB", "TB"]
+    index = 0
+    while file_size_readable >= 1024 and index < len(size_suffixes) - 1:
+        file_size_readable /= 1024
+        index += 1
+    file_size_readable = f"{file_size_readable:.2f} {size_suffixes[index]}"
+    return file_size_readable
 
 
 def get_week_day():
@@ -61,3 +80,19 @@ def safe_div(a, b):
     the denominator can be nil if a feature has no variance.
     """
     return a / b if b else 0.0
+
+
+def create_connection(db_file):
+    """create a database connection to the SQLite database
+        specified by the db_file
+    :param db_file: database file
+    :return: Connection object or None
+    """
+    conn = None
+    try:
+        conn = sqlite3.connect(db_file)
+    except Exception as e:
+        print("error connecting to db")
+        st.write(e)
+
+    return conn

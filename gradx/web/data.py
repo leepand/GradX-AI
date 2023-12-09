@@ -192,6 +192,7 @@ class Database:
                     WHERE
                         DATE(timestamp, "-03") BETWEEN '{start_date}'
                         AND '{end_date}'
+                        AND (NOT IFNULL(jsonpayload.is_sandbox, 0) = 1)
                     GROUP BY
                         1,
                         2,

@@ -3,3 +3,6 @@ streamlit_option_menu
 streamlit_nested_layout
 natsort
 streamlit-aggrid
+streamlit_extras
+streamlit_ace
+streamlit_code_editor
